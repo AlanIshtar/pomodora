@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>精准番茄钟 - 自动播放视频版</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #f8f8f8;
+      padding: 20px;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 1.8em;
+      margin-bottom: 20px;
+    }
+
+    #timer {
+      font-size: 3em;
+      margin: 20px 0;
+    }
+
+    input[type="number"], input[type="text"] {
+      width: 90%;
+      max-width: 400px;
+      padding: 10px;
+      font-size: 1em;
+      margin: 10px 0;
+    }
+
+    button {
+      padding: 12px 20px;
+      font-size: 1em;
+      margin: 10px;
+      width: 90%;
+      max-width: 200px;
+    }
+
+    iframe {
+      display: none;
+      width: 100%;
+      max-width: 640px;
+      height: calc(100vw * 9 / 16); /* 16:9 aspect ratio */
+      max-height: 360px;
+      margin-top: 20px;
+      border: none;
+    }
+
+    label {
+      display: block;
+      margin: 10px 0 5px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>精准番茄钟 🍅</h1>
+  <div id="timer">25:00</div>
+
+  <label>专注时长（分钟）:
+    <input type="number" id="focusMins" value="25" min="1" />
+  </label>
+  <label>休息时长（分钟）:
+    <input type="number" id="breakMins" value="5" min="1" />
+  </label>
+
+  <label>视频链接（YouTube / Bilibili / iframe）:</label>
+  <input id="videoUrl" type="text" placeholder="输入视频链接" />
+
+  <button id="startBtn">开始专注</button>
+
+  <iframe id="videoFrame" allow="autoplay; fullscreen" allowfullscreen></iframe>
+
+  <script>
+    let isFocus = true;
+    let timerInterval = null;
+
+    const timerEl = document.getElementById('timer');
+    const startBtn = document.getElementById('startBtn');
+    const videoInput = document.getElementById('videoUrl');
+    const iframe = document.getElementById('videoFrame');
+
+    const focusInput = document.getElementById('focusMins');
+    const breakInput = document.getElementById('breakMins');
+
+    function extractIframeUrl(url) {
+      const yt = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]+)/);
+      if (yt) return `https://www.youtube.com/embed/${yt[1]}?autoplay=1&mute=1`;
+
+      const bili = url.match(/bilibili\.com\/video\/(BV[\w]+)/i);
+      if (bili) return `https://player.bilibili.com/player.html?bvid=${bili[1]}&autoplay=1&muted=1`;
+
+      const src = url.match(/src=["']([^"']+)["']/);
+      if (src) return src[1];
+
+      return url; // 直接使用，确保能嵌入
+    }
+
+    function updateDisplay(seconds) {
+      const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+      const s = String(seconds % 60).padStart(2, '0');
+      timerEl.textContent = `${m}:${s}`;
+    }
+
+    function startTimer(durationSeconds, onEnd) {
+      const endTime = Date.now() + durationSeconds * 1000;
+
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        const now = Date.now();
+        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+        updateDisplay(remaining);
+
+        if (remaining <= 0) {
+          clearInterval(timerInterval);
+          onEnd();
+        }
+      }, 1000);
+    }
+
+    function startFocus() {
+      isFocus = true;
+      iframe.style.display = 'none';
+      iframe.src = '';
+      startBtn.disabled = true;
+
+      const focusSecs = parseInt(focusInput.value) * 60;
+      startTimer(focusSecs, () => {
+        startBreak();
+      });
+    }
+
+    function startBreak() {
+      isFocus = false;
+      const breakSecs = parseInt(breakInput.value) * 60;
+
+      const videoUrl = extractIframeUrl(videoInput.value.trim());
+      if (videoUrl) {
+        iframe.src = videoUrl;
+        iframe.style.display = 'block';
+      }
+
+      startTimer(breakSecs, () => {
+        startFocus();
+      });
+    }
+
+    startBtn.addEventListener('click', startFocus);
+
+    updateDisplay(parseInt(focusInput.value) * 60);
+  </script>
+</body>
+</html>
