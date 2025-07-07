@@ -41,11 +41,11 @@
 
     iframe {
       display: none;
+      margin: 20px auto 0;
       width: 100%;
-      max-width: 640px;
-      height: calc(100vw * 9 / 16); /* 16:9 aspect ratio */
-      max-height: 360px;
-      margin-top: 20px;
+      max-width: 800px;
+      height: calc(100vw * 9 / 16);
+      max-height: 450px;
       border: none;
     }
 
@@ -53,12 +53,43 @@
       display: block;
       margin: 10px 0 5px;
     }
+
+    .progress-container {
+      width: 90%;
+      max-width: 400px;
+      background: #ddd;
+      border-radius: 10px;
+      margin: 15px auto;
+      height: 25px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: #4caf50;
+      width: 0%;
+      line-height: 25px;
+      color: white;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
 
   <h1>精准番茄钟 🍅</h1>
   <div id="timer">25:00</div>
+
+  <label>专注事项名称:
+    <input type="text" id="taskName" placeholder="例如：写作、学习英语等" />
+  </label>
+
+  <label>预计总时间（分钟）:
+    <input type="number" id="estimatedTotal" value="100" min="1" />
+  </label>
+
+  <div class="progress-container">
+    <div class="progress-bar" id="progressBar">0%</div>
+  </div>
 
   <label>专注时长（分钟）:
     <input type="number" id="focusMins" value="25" min="1" />
@@ -77,6 +108,8 @@
   <script>
     let isFocus = true;
     let timerInterval = null;
+    let accumulatedMinutes = 0;
+    let currentTaskName = "";
 
     const timerEl = document.getElementById('timer');
     const startBtn = document.getElementById('startBtn');
@@ -85,6 +118,9 @@
 
     const focusInput = document.getElementById('focusMins');
     const breakInput = document.getElementById('breakMins');
+    const taskNameInput = document.getElementById('taskName');
+    const estimatedTotalInput = document.getElementById('estimatedTotal');
+    const progressBar = document.getElementById('progressBar');
 
     function extractIframeUrl(url) {
       const yt = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]+)/);
@@ -96,13 +132,20 @@
       const src = url.match(/src=["']([^"']+)["']/);
       if (src) return src[1];
 
-      return url; // 直接使用，确保能嵌入
+      return url;
     }
 
     function updateDisplay(seconds) {
       const m = String(Math.floor(seconds / 60)).padStart(2, '0');
       const s = String(seconds % 60).padStart(2, '0');
       timerEl.textContent = `${m}:${s}`;
+    }
+
+    function updateProgressBar() {
+      const total = parseInt(estimatedTotalInput.value);
+      const percent = Math.min((accumulatedMinutes / total) * 100, 100);
+      progressBar.style.width = percent + '%';
+      progressBar.textContent = `${Math.round(percent)}% (${accumulatedMinutes}/${total}分钟)`;
     }
 
     function startTimer(durationSeconds, onEnd) {
@@ -125,10 +168,14 @@
       isFocus = true;
       iframe.style.display = 'none';
       iframe.src = '';
-      startBtn.disabled = true;
 
       const focusSecs = parseInt(focusInput.value) * 60;
       startTimer(focusSecs, () => {
+        // 累加进度
+        if (taskNameInput.value.trim() !== '') {
+          accumulatedMinutes += parseInt(focusInput.value);
+          updateProgressBar();
+        }
         startBreak();
       });
     }
@@ -148,7 +195,29 @@
       });
     }
 
-    startBtn.addEventListener('click', startFocus);
+    startBtn.addEventListener('click', () => {
+      const taskName = taskNameInput.value.trim();
+      if (!taskName) {
+        alert("请输入专注事项名称！");
+        return;
+      }
+
+      const estimated = parseInt(estimatedTotalInput.value);
+      if (!estimated || estimated <= 0) {
+        alert("请输入合理的预计总时间（分钟）");
+        return;
+      }
+
+      // 如果任务名称变化，则重置累计时间和进度条
+      if (taskName !== currentTaskName) {
+        accumulatedMinutes = 0;
+        currentTaskName = taskName;
+        updateProgressBar();
+      }
+
+      updateProgressBar();
+      startFocus();
+    });
 
     updateDisplay(parseInt(focusInput.value) * 60);
   </script>
