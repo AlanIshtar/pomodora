@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>精准番茄钟 - 多任务支持</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #f8f8f8;
+      padding: 20px;
+      margin: 0;
+    }
+    h1 {
+      font-size: 1.8em;
+      margin-bottom: 20px;
+    }
+    #timer {
+      font-size: 3em;
+      margin: 20px 0;
+    }
+    input[type="number"], input[type="text"] {
+      width: 90%;
+      max-width: 400px;
+      padding: 10px;
+      font-size: 1em;
+      margin: 10px 0;
+    }
+    button {
+      padding: 10px 16px;
+      font-size: 1em;
+      margin: 6px;
+      cursor: pointer;
+    }
+    iframe {
+      display: none;
+      margin: 20px auto 0;
+      width: 100%;
+      max-width: 800px;
+      height: calc(100vw * 9 / 16);
+      max-height: 450px;
+      border: none;
+    }
+    .progress-container {
+      width: 90%;
+      max-width: 400px;
+      background: #ddd;
+      border-radius: 10px;
+      margin: 15px auto;
+      height: 25px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      background: #4caf50;
+      width: 0%;
+      line-height: 25px;
+      color: white;
+      font-size: 14px;
+    }
+    pre#logBox {
+      text-align: left;
+      background: #eee;
+      padding: 10px;
+      max-width: 600px;
+      margin: 20px auto;
+      height: 200px;
+      overflow: auto;
+    }
+    #taskListContainer ul {
+      padding: 0;
+      list-style: none;
+    }
+    #taskListContainer li {
+      margin: 6px 0;
+    }
+    #taskListContainer button {
+      margin-left: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>精准番茄钟 🍅</h1>
+  <div id="timer">00:00</div>
+
+  <label>添加专注事项:
+    <input type="text" id="newTaskInput" placeholder="输入任务后点击添加" />
+    <button id="addTaskBtn">添加任务</button>
+  </label>
+
+  <div id="taskListContainer">
+    <strong>专注事项列表：</strong>
+    <ul id="taskList"></ul>
+  </div>
+
+  <label>预计总时间（分钟）:
+    <input type="number" id="estimatedTotal" value="100" min="1" />
+  </label>
+
+  <div class="progress-container">
+    <div class="progress-bar" id="progressBar">0%</div>
+  </div>
+
+ <div style="width: 90%; max-width: 400px; margin: 0 auto; text-align: left;">
+  <label for="focusMins">专注时长（分钟）:</label><br />
+  <input type="number" id="focusMins" value="25" min="1" />
+  
+  <label for="breakMins">休息时长（分钟）:</label><br />
+  <input type="number" id="breakMins" value="5" min="1" />
+</div>
+
+
+  <label>视频链接（YouTube / Bilibili / iframe）:</label>
+  <input id="videoUrl" type="text" placeholder="输入视频链接" />
+
+  <button id="startBtn">开始专注</button>
+
+  <iframe id="videoFrame" allow="autoplay; fullscreen" allowfullscreen></iframe>
+
+  <div>
+    <h3>时间日志</h3>
+    <pre id="logBox"></pre>
+  </div>
+
+  <script>
+    let isFocus = false;
+    let userStartedFocus = false;
+    let timerInterval = null;
+    let accumulatedMinutes = 0;
+    let sessionStartTime = null;
+
+    let tasks = [];
+    let currentTaskName = "";
+
+    const timerEl = document.getElementById('timer');
+    const startBtn = document.getElementById('startBtn');
+    const videoInput = document.getElementById('videoUrl');
+    const iframe = document.getElementById('videoFrame');
+
+    const focusInput = document.getElementById('focusMins');
+    const breakInput = document.getElementById('breakMins');
+    const estimatedTotalInput = document.getElementById('estimatedTotal');
+    const progressBar = document.getElementById('progressBar');
+    const logBox = document.getElementById('logBox');
+
+    const newTaskInput = document.getElementById('newTaskInput');
+    const addTaskBtn = document.getElementById('addTaskBtn');
+    const taskList = document.getElementById('taskList');
+
+    addTaskBtn.addEventListener("click", () => {
+      const task = newTaskInput.value.trim();
+      if (!task || tasks.includes(task)) return;
+      tasks.push(task);
+      newTaskInput.value = "";
+      renderTaskList();
+    });
+
+    function renderTaskList() {
+      taskList.innerHTML = "";
+
+      tasks.forEach(task => {
+        const li = document.createElement("li");
+
+        const selectBtn = document.createElement("button");
+        selectBtn.textContent = task === currentTaskName ? `✔ ${task}` : task;
+        selectBtn.style.fontWeight = task === currentTaskName ? "bold" : "normal";
+        selectBtn.onclick = () => {
+          currentTaskName = task;
+          updateProgressBar();
+          renderTaskList();
+        };
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "❌";
+        deleteBtn.onclick = () => {
+          tasks = tasks.filter(t => t !== task);
+          if (task === currentTaskName) currentTaskName = "";
+          renderTaskList();
+        };
+
+        li.appendChild(selectBtn);
+        li.appendChild(deleteBtn);
+        taskList.appendChild(li);
+      });
+    }
+
+    function extractIframeUrl(url) {
+      const yt = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]+)/);
+      if (yt) return `https://www.youtube.com/embed/${yt[1]}?autoplay=1&mute=1`;
+
+      const bili = url.match(/bilibili\.com\/video\/(BV[\w]+)/i);
+      if (bili) return `https://player.bilibili.com/player.html?bvid=${bili[1]}&autoplay=1&muted=1`;
+
+      const src = url.match(/src=["']([^"']+)["']/);
+      if (src) return src[1];
+
+      return url;
+    }
+
+    function updateDisplay(seconds) {
+		const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+		const s = String(seconds % 60).padStart(2, '0');
+		const label = isFocus ? '专注' : '休息';
+		timerEl.textContent = `[${label}] ${m}:${s}`;
+}
+
+
+    function updateProgressBar() {
+      const total = parseInt(estimatedTotalInput.value);
+      const percent = Math.min((accumulatedMinutes / total) * 100, 100);
+      progressBar.style.width = percent + '%';
+      progressBar.textContent = `${Math.round(percent)}% (${accumulatedMinutes}/${total}分钟)`;
+    }
+
+    function getTimeStr(date) {
+      return date.toTimeString().slice(0, 5);
+    }
+
+    function logTask(start, end, task) {
+      const line = `${getTimeStr(start)}-${getTimeStr(end)} ------> ${task}`;
+      logBox.textContent += line + "\n";
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function startTimer(durationSeconds, onEnd) {
+      const endTime = Date.now() + durationSeconds * 1000;
+      sessionStartTime = new Date();
+
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        const now = Date.now();
+        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+        updateDisplay(remaining);
+
+        if (remaining <= 0) {
+          clearInterval(timerInterval);
+          onEnd(new Date());
+        }
+      }, 1000);
+    }
+
+    function startBreak(log = true) {
+      isFocus = false;
+      const breakSecs = parseInt(breakInput.value) * 60;
+
+      const videoUrl = extractIframeUrl(videoInput.value.trim());
+      iframe.src = videoUrl || '';
+      iframe.style.display = videoUrl ? 'block' : 'none';
+
+      updateDisplay(breakSecs);
+
+      startTimer(breakSecs, (endTime) => {
+        if (log) logTask(sessionStartTime, endTime, "休息");
+
+        if (!userStartedFocus) {
+          startBreak(true);
+        }
+      });
+    }
+
+    function startFocus() {
+      if (!isFocus && sessionStartTime) {
+        const now = new Date();
+        logTask(sessionStartTime, now, "休息");
+      }
+
+      isFocus = true;
+      userStartedFocus = true;
+      iframe.src = '';
+      iframe.style.display = 'none';
+
+      if (!currentTaskName) {
+        alert("请选择一个专注事项！");
+        return;
+      }
+
+      const estimated = parseInt(estimatedTotalInput.value);
+      if (!estimated || estimated <= 0) {
+        alert("请输入合理的预计总时间（分钟）");
+        return;
+      }
+
+      const focusSecs = parseInt(focusInput.value) * 60;
+      startTimer(focusSecs, (endTime) => {
+        accumulatedMinutes += parseInt(focusInput.value);
+        updateProgressBar();
+        logTask(sessionStartTime, endTime, currentTaskName);
+        userStartedFocus = false;
+        startBreak(true);
+      });
+    }
+
+    startBtn.addEventListener('click', startFocus);
+
+    window.onload = () => {
+      const breakSecs = parseInt(breakInput.value) * 60;
+      updateDisplay(breakSecs);
+      startBreak(true);
+    };
+  </script>
+</body>
+</html>
